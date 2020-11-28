@@ -292,7 +292,14 @@ parse_message_maybe_exclude(CustomExcludeTags, JSON, Replies, Message) :-
             exception.throw(notmuch_json_error(
                 "parse_message_maybe_exclude: expected body"))
         ),
-        Message = message(MessageId, Timestamp, Headers, TagSet, Body, Replies)
+        ( JSON/"match" = bool(Match0) ->
+            Match = Match0
+        ;
+            exception.throw(notmuch_json_error(
+                "parse_message_maybe_exclude: expected match"))
+        ),
+        Message = message(MessageId, Timestamp, Headers, TagSet, Body, Replies,
+            Match)
     ).
 
 :- pred really_exclude_message(maybe(set(tag))::in, set(tag)::in) is semidet.

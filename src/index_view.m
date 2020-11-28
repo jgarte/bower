@@ -138,7 +138,7 @@
     --->    continue
     ;       continue_no_draw
     ;       resize
-    ;       open_pager(thread_id, set(tag))
+    ;       open_pager(thread_id, list(token), set(tag))
     ;       enter_limit(maybe(string))
     ;       limit_alias_char(char)
     ;       refresh_all
@@ -386,11 +386,12 @@ index_loop(Screen, OnEntry, !.IndexInfo, !IO) :-
         recreate_index_view(Screen, !IndexInfo, !IO),
         index_loop(Screen, redraw, !.IndexInfo, !IO)
     ;
-        Action = open_pager(ThreadId, IncludeTags),
+        Action = open_pager(ThreadId, SearchTokens, IncludeTags),
         flush_async_with_progress(Screen, !IO),
         Config = !.IndexInfo ^ i_config,
         Crypto = !.IndexInfo ^ i_crypto,
         Tokens = !.IndexInfo ^ i_search_tokens,
+        % XXX IndexPollTerms and SearchTokens pretty similar
         index_poll_terms(Tokens, IndexPollTerms, !IO),
         CommonHistory0 = !.IndexInfo ^ i_common_history,
         % Use the last search string that was entered in any view, not
@@ -401,8 +402,8 @@ index_loop(Screen, OnEntry, !.IndexInfo, !IO) :-
         ;
             MaybeSearch = no
         ),
-        open_thread_pager(Config, Crypto, Screen, ThreadId, IncludeTags,
-            IndexPollTerms, MaybeSearch, Transition,
+        open_thread_pager(Config, Crypto, Screen, ThreadId, SearchTokens,
+            IncludeTags, IndexPollTerms, MaybeSearch, Transition,
             CommonHistory0, CommonHistory, !IO),
         handle_screen_transition(Screen, Transition, TagUpdates,
             !IndexInfo, !IO),
@@ -810,8 +811,9 @@ enter(Info, Action) :-
     Scrollable = Info ^ i_scrollable,
     ( get_cursor_line(Scrollable, _, CursorLine) ->
         ThreadId = CursorLine ^ i_id,
+        SearchTokens = Info ^ i_search_tokens,
         IncludeTags = CursorLine ^ i_tags,
-        Action = open_pager(ThreadId, IncludeTags)
+        Action = open_pager(ThreadId, SearchTokens, IncludeTags)
     ;
         Action = continue
     ).
@@ -939,7 +941,7 @@ handle_recall(Screen, Sent, !IndexInfo, !IO) :-
     (
         MaybeSelected = yes(Message),
         (
-            Message = message(_, _, _, _, _, _),
+            Message = message(_, _, _, _, _, _, _),
             PartVisibilityMap = map.init,
             continue_from_message(Config, Crypto, Screen, postponed_message,
                 Message, PartVisibilityMap, TransitionB, History0, History,

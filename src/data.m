@@ -4,6 +4,7 @@
 :- module data.
 :- interface.
 
+:- import_module bool.
 :- import_module list.
 :- import_module map.
 :- import_module maybe.
@@ -35,7 +36,8 @@
                 m_headers       :: headers,
                 m_tags          :: set(tag),
                 m_body          :: part,
-                m_replies       :: list(message)
+                m_replies       :: list(message),
+                m_is_match      :: bool
             )
     ;       excluded_message(
                 % Although we will usually have information about excluded
@@ -49,7 +51,7 @@
             ).
 
 :- inst message
-    --->    message(ground, ground, ground, ground, ground, ground).
+    --->    message(ground, ground, ground, ground, ground, ground, ground).
 
 :- type message_for_recall
     --->    message_for_recall(
@@ -255,18 +257,18 @@ tag_to_string(tag(String), String).
 non_excluded_message(Message) :-
     require_complete_switch [Message]
     (
-        Message = message(_, _, _, _, _, _)
+        Message = message(_, _, _, _, _, _, _)
     ;
         Message = excluded_message(_, _, _, _, _),
         fail
     ).
 
-get_maybe_message_id(message(Id, _, _, _, _, _)) = yes(Id).
+get_maybe_message_id(message(Id, _, _, _, _, _, _)) = yes(Id).
 get_maybe_message_id(excluded_message(MaybeId, _, _, _, _)) = MaybeId.
 
 get_timestamp_or_zero(Message) = Timestamp :-
     (
-        Message = message(_, Timestamp, _, _, _, _)
+        Message = message(_, Timestamp, _, _, _, _, _)
     ;
         Message = excluded_message(_, MaybeTimestamp, _, _, _),
         (
@@ -279,7 +281,7 @@ get_timestamp_or_zero(Message) = Timestamp :-
 
 get_maybe_subject(Message) = MaybeSubject :-
     (
-        Message = message(_, _, Headers, _, _, _),
+        Message = message(_, _, Headers, _, _, _, _),
         MaybeSubject = yes(Headers ^ h_subject)
     ;
         Message = excluded_message(_, _, MaybeHeaders, _, _),
@@ -292,7 +294,7 @@ get_maybe_subject(Message) = MaybeSubject :-
         )
     ).
 
-get_replies(message(_, _, _, _, _, Replies)) = Replies.
+get_replies(message(_, _, _, _, _, Replies, _)) = Replies.
 get_replies(excluded_message(_, _, _, _, Replies)) = Replies.
 
 %-----------------------------------------------------------------------------%

@@ -363,7 +363,7 @@ make_message_tree(Config, Cols, Mode, Folding, Message, Tree, !Counter, !IO) :-
     allocate_node_id(NodeId, !Counter),
     (
         Message = message(_MessageId, _Timestamp, _Headers, _Tags, _Body,
-            Replies),
+            Replies, _IsMatch),
         make_message_self_trees(Config, Cols, Folding, Message, NodeId,
             SelfTrees, !Counter, !IO)
     ;
@@ -386,7 +386,8 @@ make_message_tree(Config, Cols, Mode, Folding, Message, Tree, !Counter, !IO) :-
 
 make_message_self_trees(Config, Cols, Folding, Message, NodeId, Trees,
         !Counter, !IO) :-
-    Message = message(_MessageId, _Timestamp, Headers, _Tags, Body, _Replies),
+    Message = message(_MessageId, _Timestamp, Headers, _Tags, Body, _Replies,
+        _IsMatch),
     some [!RevLines] (
         !:RevLines = [],
         add_header(yes(Message), Cols, "Date", Headers ^ h_date, !RevLines),

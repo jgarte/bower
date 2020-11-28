@@ -47,7 +47,7 @@
 prepare_reply(Config, OrigMessage, PartVisibilityMap, ReplyHeaders0,
         ReplyHeaders, ReplyBody, !IO) :-
     OrigMessage = message(_MessageId, _Timestamp, OrigMessageHeaders, _Tags,
-        Body, _Replies),
+        Body, _Replies, _IsMatch),
     OrigDate = OrigMessageHeaders ^ h_date,
     OrigFrom = OrigMessageHeaders ^ h_from,
     ReplyHeaders0 = reply_headers(

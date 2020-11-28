@@ -35,7 +35,7 @@
 prepare_forward_message(Config, OrigMessage, PartVisibilityMap, From,
         Headers, BodyText, AttachmentParts, !IO) :-
     OrigMessage = message(_MessageId, _Timestamp, OrigHeaders, _Tags,
-        OrigBody, _Replies),
+        OrigBody, _Replies, _IsMatch),
 
     OrigSubject = header_value_string(OrigHeaders ^ h_subject),
     OrigDate = header_value_string(OrigHeaders ^ h_date),

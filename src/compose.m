@@ -427,7 +427,7 @@ start_reply_to_message_id(Config, Crypto, Screen, MessageId, ReplyKind,
     (
         Res = ok(Message),
         (
-            Message = message(_, _, _, _, _, _),
+            Message = message(_, _, _, _, _, _, _),
             PartVisibilityMap = map.init,
             start_reply(Config, Crypto, Screen, Message, ReplyKind,
                 PartVisibilityMap, Transition, !History, !IO)
@@ -467,7 +467,8 @@ start_forward(Config, Crypto, Screen, Message, PartVisibilityMap, Transition,
 
 continue_from_message(Config, Crypto, Screen, ContinueBase, Message,
         PartVisibilityMap, Transition, !History, !IO) :-
-    Message = message(MessageId, _Timestamp, Headers0, Tags0, Body0, _Replies0),
+    Message = message(MessageId, _Timestamp, Headers0, Tags0, Body0, _Replies0,
+        _IsMatch),
     select_main_part_and_attachments(PartVisibilityMap, [Body0], MaybeMainPart,
         AttachmentParts),
     (

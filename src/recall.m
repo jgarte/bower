@@ -232,7 +232,7 @@ enter(Info, Transition, !IO) :-
         (
             Result = ok(Message),
             (
-                Message = message(_, _, _, _, _, _),
+                Message = message(_, _, _, _, _, _, _),
                 Transition = screen_transition(yes(Message), clear_message)
             ;
                 Message = excluded_message(_, _, _, _, _),
