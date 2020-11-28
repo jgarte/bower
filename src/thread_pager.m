@@ -4,6 +4,7 @@
 :- module thread_pager.
 :- interface.
 
+:- import_module bool.
 :- import_module io.
 :- import_module list.
 :- import_module map.
@@ -33,7 +34,7 @@
             ).
 
 :- pred open_thread_pager(prog_config::in, crypto::in, screen::in,
-    thread_id::in, list(token)::in, set(tag)::in, list(string)::in,
+    thread_id::in, list(token)::in, set(tag)::in, list(string)::in, bool::in,
     maybe(string)::in, screen_transition(thread_pager_effects)::out,
     common_history::in, common_history::out, io::di, io::uo) is det.
 
@@ -42,7 +43,6 @@
 
 :- implementation.
 
-:- import_module bool.
 :- import_module cord.
 :- import_module float.
 :- import_module int.
@@ -182,13 +182,12 @@
 %-----------------------------------------------------------------------------%
 
 open_thread_pager(Config, Crypto, Screen, ThreadId, SearchTokens, IncludeTags,
-        IndexPollTerms, MaybeSearch, Transition, CommonHistory0, CommonHistory,
-        !IO) :-
+        IndexPollTerms, OnlyMatched, MaybeSearch, Transition,
+        CommonHistory0, CommonHistory, !IO) :-
     current_timestamp(RefreshTime, !IO),
     get_thread_messages(Config, ThreadId, SearchTokens, IncludeTags,
         ParseResult, Messages, !IO),
 
-    OnlyMatched = no,
     (
         OnlyMatched = yes,
         Ordering = thread_ordering_flat

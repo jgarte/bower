@@ -110,7 +110,7 @@
     ;       half_page_up
     ;       half_page_down
     ;       skip_to_unread
-    ;       enter
+    ;       open_thread_pager(bool)
     ;       enter_limit
     ;       enter_limit_tilde
     ;       limit_alias_char(char)
@@ -138,7 +138,7 @@
     --->    continue
     ;       continue_no_draw
     ;       resize
-    ;       open_pager(thread_id, list(token), set(tag))
+    ;       open_thread_pager(thread_id, list(token), set(tag), bool)
     ;       enter_limit(maybe(string))
     ;       limit_alias_char(char)
     ;       refresh_all
@@ -386,7 +386,8 @@ index_loop(Screen, OnEntry, !.IndexInfo, !IO) :-
         recreate_index_view(Screen, !IndexInfo, !IO),
         index_loop(Screen, redraw, !.IndexInfo, !IO)
     ;
-        Action = open_pager(ThreadId, SearchTokens, IncludeTags),
+        Action = open_thread_pager(ThreadId, SearchTokens, IncludeTags,
+            OnlyMatched),
         flush_async_with_progress(Screen, !IO),
         Config = !.IndexInfo ^ i_config,
         Crypto = !.IndexInfo ^ i_crypto,
@@ -403,7 +404,7 @@ index_loop(Screen, OnEntry, !.IndexInfo, !IO) :-
             MaybeSearch = no
         ),
         open_thread_pager(Config, Crypto, Screen, ThreadId, SearchTokens,
-            IncludeTags, IndexPollTerms, MaybeSearch, Transition,
+            IncludeTags, IndexPollTerms, OnlyMatched, MaybeSearch, Transition,
             CommonHistory0, CommonHistory, !IO),
         handle_screen_transition(Screen, Transition, TagUpdates,
             !IndexInfo, !IO),
@@ -587,8 +588,8 @@ index_view_input(NumRows, KeyCode, MessageUpdate, Action, !IndexInfo) :-
             skip_to_unread(NumRows, MessageUpdate, !IndexInfo),
             Action = continue
         ;
-            Binding = enter,
-            enter(!.IndexInfo, Action),
+            Binding = open_thread_pager(OnlyMatched),
+            open_thread_pager(!.IndexInfo, OnlyMatched, Action),
             MessageUpdate = clear_message
         ;
             Binding = enter_limit,
@@ -713,8 +714,12 @@ key_binding(code(Code), Binding) :-
     ).
 key_binding(meta(Char), Binding) :-
     % Prevent Alt-Backspace, etc.
-    is_printable(Char),
-    Binding = limit_alias_char(Char).
+    ( is_printable(Char) ->
+        Binding = limit_alias_char(Char)
+    ;
+        Char = ('\r'),
+        Binding = open_thread_pager(yes)
+    ).
 
 :- pred key_binding_char(char::in, binding::out) is semidet.
 
@@ -727,7 +732,7 @@ key_binding_char('[', half_page_up).
 key_binding_char(']', half_page_down).
 key_binding_char('\t', skip_to_unread).
 key_binding_char(',', skip_to_unread).
-key_binding_char('\r', enter).
+key_binding_char('\r', open_thread_pager(no)).
 key_binding_char('l', enter_limit).
 key_binding_char('~', enter_limit_tilde).
 key_binding_char('m', start_compose).
@@ -805,15 +810,16 @@ skip_to_unread(NumRows, MessageUpdate, !Info) :-
 is_unread_line(Line) :-
     Line ^ i_std_tags ^ unread = unread.
 
-:- pred enter(index_info::in, action::out) is det.
+:- pred open_thread_pager(index_info::in, bool::in, action::out) is det.
 
-enter(Info, Action) :-
+open_thread_pager(Info, OnlyMatched, Action) :-
     Scrollable = Info ^ i_scrollable,
     ( get_cursor_line(Scrollable, _, CursorLine) ->
         ThreadId = CursorLine ^ i_id,
         SearchTokens = Info ^ i_search_tokens,
         IncludeTags = CursorLine ^ i_tags,
-        Action = open_pager(ThreadId, SearchTokens, IncludeTags)
+        Action = open_thread_pager(ThreadId, SearchTokens, IncludeTags,
+            OnlyMatched)
     ;
         Action = continue
     ).
