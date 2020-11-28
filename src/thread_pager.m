@@ -84,6 +84,7 @@
                 tp_include_tags     :: set(tag),
                 tp_messages         :: list(message),
                 tp_ordering         :: thread_ordering,
+                tp_only_matched     :: bool,
 
                 tp_scrollable       :: scrollable(thread_line),
                 tp_num_thread_rows  :: int,
@@ -148,6 +149,7 @@
     ;       decrypt_part
     ;       verify_part
     ;       toggle_ordering
+    ;       toggle_only_matched
     ;       addressbook_add
     ;       pipe_ids
     ;       refresh_results
@@ -186,9 +188,16 @@ open_thread_pager(Config, Crypto, Screen, ThreadId, SearchTokens, IncludeTags,
     get_thread_messages(Config, ThreadId, SearchTokens, IncludeTags,
         ParseResult, Messages, !IO),
 
-    get_thread_ordering(Config, Ordering),
+    OnlyMatched = no,
+    (
+        OnlyMatched = yes,
+        Ordering = thread_ordering_flat
+    ;
+        OnlyMatched = no,
+        get_thread_ordering(Config, Ordering)
+    ),
     create_pager_and_thread_lines(Config, Screen, Messages, Ordering,
-        Scrollable, NumThreadRows, PagerInfo, NumPagerRows, !IO),
+        OnlyMatched, Scrollable, NumThreadRows, PagerInfo, NumPagerRows, !IO),
     NumMessages = get_num_lines(Scrollable),
 
     NextPollTime = next_poll_time(Config, RefreshTime),
@@ -199,8 +208,8 @@ open_thread_pager(Config, Crypto, Screen, ThreadId, SearchTokens, IncludeTags,
     AddedMessages0 = 0,
 
     Info0 = thread_pager_info(Config, Crypto,
-        ThreadId, SearchTokens, IncludeTags, Messages,
-        Ordering, Scrollable, NumThreadRows, PagerInfo, NumPagerRows,
+        ThreadId, SearchTokens, IncludeTags, Messages, Ordering, OnlyMatched,
+        Scrollable, NumThreadRows, PagerInfo, NumPagerRows,
         RefreshTime, NextPollTime, ThreadPollCount,
         IndexPollString, IndexPollCount,
         MaybeSearch, dir_forward, CommonHistory0, AddedMessages0),
@@ -227,7 +236,7 @@ open_thread_pager(Config, Crypto, Screen, ThreadId, SearchTokens, IncludeTags,
 reopen_thread_pager(Screen, KeepCached, !Info, !IO) :-
     !.Info = thread_pager_info(Config, _Crypto,
         ThreadId, SearchTokens, IncludeTags,
-        Messages0, Ordering,
+        Messages0, Ordering, OnlyMatched,
         Scrollable0, _NumThreadRows0, Pager0, _NumPagerRows0,
         _RefreshTime0, _NextPollTime0, _ThreadPollCount0,
         _IndexPollString, _IndexPollCount,
@@ -252,7 +261,8 @@ reopen_thread_pager(Screen, KeepCached, !Info, !IO) :-
         % RefreshTime.
     ),
 
-    create_pager_and_thread_lines(Config, Screen, Messages, Ordering,
+    create_pager_and_thread_lines(Config, Screen,
+        Messages, Ordering, OnlyMatched,
         Scrollable1, NumThreadRows, Pager1, NumPagerRows, !IO),
 
     % Reapply tag changes from previous state.
@@ -301,6 +311,7 @@ reopen_thread_pager(Screen, KeepCached, !Info, !IO) :-
         ShowMessageUpdate = no
     ).
 
+    % XXX could say "Showing <n> matched messages"
 :- func showing_num_messages(int) = string.
 
 showing_num_messages(Count) =
@@ -376,11 +387,11 @@ verify_arg(no) = "--verify=false".
 %-----------------------------------------------------------------------------%
 
 :- pred create_pager_and_thread_lines(prog_config::in, screen::in,
-    list(message)::in, thread_ordering::in,
+    list(message)::in, thread_ordering::in, bool::in,
     scrollable(thread_line)::out, int::out, pager_info::out, int::out,
     io::di, io::uo) is det.
 
-create_pager_and_thread_lines(Config, Screen, Messages, Ordering,
+create_pager_and_thread_lines(Config, Screen, Messages, Ordering, OnlyMatched,
         Scrollable, NumThreadRows, PagerInfo, NumPagerRows, !IO) :-
     get_rows_cols(Screen, Rows0, Cols, !IO),
     % Subtract rows for status bar and message.
@@ -394,7 +405,7 @@ create_pager_and_thread_lines(Config, Screen, Messages, Ordering,
             PagerInfo0, !IO)
     ;
         Ordering = thread_ordering_flat,
-        append_flat_messages(Nowish, Messages, ThreadLines,
+        append_flat_messages(Nowish, Messages, OnlyMatched, ThreadLines,
             SortedFlatMessages, !IO),
         setup_pager(Config, Cols, toplevel_only, do_folding,
             SortedFlatMessages, PagerInfo0, !IO)
@@ -558,12 +569,20 @@ not_blank_at_column(Graphics, Col) :-
     list.index0(Graphics, Col, Graphic),
     Graphic \= blank.
 
-:- pred append_flat_messages(tm::in, list(message)::in,
+:- pred append_flat_messages(tm::in, list(message)::in, bool::in,
     list(thread_line)::out, list(message)::out, io::di, io::uo) is det.
 
-append_flat_messages(Nowish, Messages, ThreadLines, SortedFlatMessages, !IO) :-
+append_flat_messages(Nowish, Messages, OnlyMatched, ThreadLines,
+        SortedFlatMessages, !IO) :-
     flatten_messages(no, Messages, [], MessagesFlat0),
-    list.sort(compare_by_timestamp, MessagesFlat0, MessagesFlat),
+    (
+        OnlyMatched = yes,
+        filter(message_is_matched, MessagesFlat0, MessagesFlat1)
+    ;
+        OnlyMatched = no,
+        MessagesFlat1 = MessagesFlat0
+    ),
+    list.sort(compare_by_timestamp, MessagesFlat1, MessagesFlat),
     list.foldl3(append_flat_message(Nowish), MessagesFlat,
         no, _MaybePrevSubject, [], RevThreadLines, !IO),
     list.reverse(RevThreadLines, ThreadLines),
@@ -579,6 +598,12 @@ flatten_messages(MaybeParentId, [Message | Messages], !Acc) :-
     list.cons(message_flat(Message, MaybeParentId), !Acc),
     flatten_messages(MaybeMessageId, Replies, !Acc),
     flatten_messages(MaybeParentId, Messages, !Acc).
+
+:- pred message_is_matched(message_flat::in) is semidet.
+
+message_is_matched(MessageFlat) :-
+    MessageFlat = message_flat(Message, _MaybeParentId),
+    Message ^ m_is_match = yes.
 
 :- pred compare_by_timestamp(message_flat::in, message_flat::in,
     comparison_result::out) is det.
@@ -909,8 +934,14 @@ thread_pager_loop(Screen, OnEntry, !Info, !IO) :-
         verify_part(Screen, !Info, !IO),
         thread_pager_loop(Screen, redraw, !Info, !IO)
     ;
-        Action = toggle_ordering,
-        toggle_ordering(!Info),
+        (
+            Action = toggle_ordering,
+            toggle_ordering(MessageUpdateB, !Info)
+        ;
+            Action = toggle_only_matched,
+            toggle_only_matched(MessageUpdateB, !Info)
+        ),
+        update_message(Screen, MessageUpdateB, !IO),
         reopen_thread_pager(Screen, yes, !Info, !IO),
         thread_pager_loop(Screen, redraw, !Info, !IO)
     ;
@@ -1107,6 +1138,11 @@ thread_pager_input(Screen, Key, Action, MessageUpdate, !Info, !IO) :-
         Key = char('O')
     ->
         Action = toggle_ordering,
+        MessageUpdate = no_change
+    ;
+        Key = char('M')
+    ->
+        Action = toggle_only_matched,
         MessageUpdate = no_change
     ;
         Key = char('=')
@@ -2117,18 +2153,50 @@ good_signature(Signature) :-
 
 %-----------------------------------------------------------------------------%
 
-:- pred toggle_ordering(thread_pager_info::in, thread_pager_info::out) is det.
+:- pred toggle_ordering(message_update::out,
+    thread_pager_info::in, thread_pager_info::out) is det.
 
-toggle_ordering(!Info) :-
+toggle_ordering(MessageUpdate, !Info) :-
     Ordering0 = !.Info ^ tp_ordering,
     (
         Ordering0 = thread_ordering_flat,
-        Ordering = thread_ordering_threaded
+        Ordering = thread_ordering_threaded,
+        MessageUpdate = set_info("Showing messages in threaded view.")
     ;
         Ordering0 = thread_ordering_threaded,
-        Ordering = thread_ordering_flat
+        Ordering = thread_ordering_flat,
+        MessageUpdate = set_info("Showing messages in flat view.")
     ),
     !Info ^ tp_ordering := Ordering.
+
+%-----------------------------------------------------------------------------%
+
+:- pred toggle_only_matched(message_update::out,
+    thread_pager_info::in, thread_pager_info::out) is det.
+
+toggle_only_matched(MessageUpdate, !Info) :-
+    Ordering0 = !.Info ^ tp_ordering,
+    OnlyMatched0 = !.Info ^ tp_only_matched,
+    (
+        Ordering0 = thread_ordering_flat,
+        Ordering = thread_ordering_flat,
+        (
+            OnlyMatched0 = no,
+            OnlyMatched = yes,
+            MessageUpdate = set_info("Showing matched messages.")
+        ;
+            OnlyMatched0 = yes,
+            OnlyMatched = no,
+            MessageUpdate = set_info("Showing all messages.")
+        )
+    ;
+        Ordering0 = thread_ordering_threaded,
+        Ordering = thread_ordering_flat,
+        OnlyMatched = yes,
+        MessageUpdate = set_info("Showing matched messages in flat view.")
+    ),
+    !Info ^ tp_ordering := Ordering,
+    !Info ^ tp_only_matched := OnlyMatched.
 
 %-----------------------------------------------------------------------------%
 
