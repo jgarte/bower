@@ -85,6 +85,8 @@
 
 :- pred make_colors(config::in, colors::out) is det.
 
+:- func disabled_thread_attrs = thread_attrs.
+
 %-----------------------------------------------------------------------------%
 %-----------------------------------------------------------------------------%
 
@@ -392,6 +394,31 @@ default_compose_attrs(GenericAttrs, StatusAttrs) =
         StatusAttrs,
         bold(blue),
         normal(red)
+    ).
+
+disabled_thread_attrs =
+    thread_attrs(
+        disabled_generic_attrs,
+        default_status_attrs,
+        bold(black)
+    ).
+
+:- func disabled_generic_attrs = generic_attrs.
+
+disabled_generic_attrs =
+    generic_attrs(
+        bold(black),
+        bold(black),
+        bold(black),
+        bold(black),
+        bold(black),
+        bold(black),
+        bold(black),
+        bold(black),
+        bold(black),
+        bold(black),
+        bold(black),
+        bold(black)
     ).
 
 :- func normal(colour) = attr.

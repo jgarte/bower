@@ -188,13 +188,7 @@ open_thread_pager(Config, Crypto, Screen, ThreadId, SearchTokens, IncludeTags,
     get_thread_messages(Config, ThreadId, SearchTokens, IncludeTags,
         ParseResult, Messages, !IO),
 
-    (
-        OnlyMatched = yes,
-        Ordering = thread_ordering_flat
-    ;
-        OnlyMatched = no,
-        get_thread_ordering(Config, Ordering)
-    ),
+    get_thread_ordering(Config, Ordering),
     create_pager_and_thread_lines(Config, Screen, Messages, Ordering,
         OnlyMatched, Scrollable, NumThreadRows, PagerInfo, NumPagerRows, !IO),
     NumMessages = get_num_lines(Scrollable),
@@ -400,13 +394,13 @@ create_pager_and_thread_lines(Config, Screen, Messages, Ordering, OnlyMatched,
     (
         Ordering = thread_ordering_threaded,
         append_threaded_messages(Nowish, Messages, ThreadLines, !IO),
-        setup_pager(Config, Cols, include_replies, do_folding, Messages,
-            PagerInfo0, !IO)
+        setup_pager(Config, Cols, include_replies, do_folding, OnlyMatched,
+            Messages, PagerInfo0, !IO)
     ;
         Ordering = thread_ordering_flat,
         append_flat_messages(Nowish, Messages, OnlyMatched, ThreadLines,
             SortedFlatMessages, !IO),
-        setup_pager(Config, Cols, toplevel_only, do_folding,
+        setup_pager(Config, Cols, toplevel_only, do_folding, OnlyMatched,
             SortedFlatMessages, PagerInfo0, !IO)
     ),
     Scrollable0 = scrollable.init_with_cursor(ThreadLines),
@@ -571,17 +565,10 @@ not_blank_at_column(Graphics, Col) :-
 :- pred append_flat_messages(tm::in, list(message)::in, bool::in,
     list(thread_line)::out, list(message)::out, io::di, io::uo) is det.
 
-append_flat_messages(Nowish, Messages, OnlyMatched, ThreadLines,
+append_flat_messages(Nowish, Messages, _OnlyMatched, ThreadLines,
         SortedFlatMessages, !IO) :-
     flatten_messages(no, Messages, [], MessagesFlat0),
-    (
-        OnlyMatched = yes,
-        filter(message_is_matched, MessagesFlat0, MessagesFlat1)
-    ;
-        OnlyMatched = no,
-        MessagesFlat1 = MessagesFlat0
-    ),
-    list.sort(compare_by_timestamp, MessagesFlat1, MessagesFlat),
+    list.sort(compare_by_timestamp, MessagesFlat0, MessagesFlat),
     list.foldl3(append_flat_message(Nowish), MessagesFlat,
         no, _MaybePrevSubject, [], RevThreadLines, !IO),
     list.reverse(RevThreadLines, ThreadLines),
@@ -2174,27 +2161,16 @@ toggle_ordering(MessageUpdate, !Info) :-
     thread_pager_info::in, thread_pager_info::out) is det.
 
 toggle_only_matched(MessageUpdate, !Info) :-
-    Ordering0 = !.Info ^ tp_ordering,
     OnlyMatched0 = !.Info ^ tp_only_matched,
     (
-        Ordering0 = thread_ordering_flat,
-        Ordering = thread_ordering_flat,
-        (
-            OnlyMatched0 = no,
-            OnlyMatched = yes,
-            MessageUpdate = set_info("Showing matched messages.")
-        ;
-            OnlyMatched0 = yes,
-            OnlyMatched = no,
-            MessageUpdate = set_info("Showing all messages.")
-        )
-    ;
-        Ordering0 = thread_ordering_threaded,
-        Ordering = thread_ordering_flat,
+        OnlyMatched0 = no,
         OnlyMatched = yes,
-        MessageUpdate = set_info("Showing matched messages in flat view.")
+        MessageUpdate = set_info("Showing matched messages.")
+    ;
+        OnlyMatched0 = yes,
+        OnlyMatched = no,
+        MessageUpdate = set_info("Showing all messages.")
     ),
-    !Info ^ tp_ordering := Ordering,
     !Info ^ tp_only_matched := OnlyMatched.
 
 %-----------------------------------------------------------------------------%
@@ -2628,11 +2604,12 @@ draw_thread_pager(Screen, Info, !IO) :-
     Config = Info ^ tp_config,
     Attrs = thread_attrs(Config),
     PagerAttrs = pager_attrs(Config),
+    OnlyMatched = Info ^ tp_only_matched,
 
     get_main_panels(Screen, MainPanels, !IO),
     split_panels(Info, MainPanels, ThreadPanels, SepPanel, PagerPanels),
-    scrollable.draw(draw_thread_line(Attrs), Screen, ThreadPanels, Scrollable,
-        !IO),
+    scrollable.draw(draw_thread_line(Attrs, OnlyMatched),
+        Screen, ThreadPanels, Scrollable, !IO),
     get_cols(Screen, Cols, !IO),
     draw_sep(Screen, SepPanel, Attrs, Cols, !IO),
     draw_pager_lines(Screen, PagerPanels, PagerAttrs, PagerInfo, !IO),
@@ -2651,13 +2628,24 @@ draw_sep(Screen, MaybeSepPanel, Attrs, Cols, !IO) :-
         MaybeSepPanel = no
     ).
 
-:- pred draw_thread_line(thread_attrs::in, screen::in, vpanel::in,
+:- pred draw_thread_line(thread_attrs::in, bool::in, screen::in, vpanel::in,
     thread_line::in, int::in, bool::in, io::di, io::uo) is det.
 
-draw_thread_line(TAttrs, Screen, Panel, Line, _LineNr, IsCursor, !IO) :-
+draw_thread_line(TAttrs0, OnlyMatched, Screen, Panel, Line, _LineNr, IsCursor,
+        !IO) :-
     Line = thread_line(Message, _ParentId, presentable_string(From),
         _PrevTags, CurrTags, StdTags, NonstdTagsWidth,
         Selected, MaybeGraphics, RelDate, MaybeSubject),
+
+    ( if
+        OnlyMatched = yes,
+        Message ^ m_is_match = no
+    then
+        TAttrs = disabled_thread_attrs
+    else
+        TAttrs = TAttrs0
+    ),
+
     Attrs = TAttrs ^ t_generic,
     (
         IsCursor = yes,

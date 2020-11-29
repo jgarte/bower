@@ -4,6 +4,7 @@
 :- module pager.
 :- interface.
 
+:- import_module bool.
 :- import_module io.
 :- import_module list.
 :- import_module maybe.
@@ -36,7 +37,7 @@
     ;       recreate.
 
 :- pred setup_pager(prog_config::in, int::in, setup_mode::in, folding::in,
-    list(message)::in, pager_info::out, io::di, io::uo) is det.
+    bool::in, list(message)::in, pager_info::out, io::di, io::uo) is det.
 
 :- pred setup_pager_for_staging(prog_config::in, int::in, folding::in,
     string::in, maybe(string)::in, retain_pager_pos::in, pager_info::out,
@@ -133,7 +134,6 @@
 
 :- implementation.
 
-:- import_module bool.
 :- import_module char.
 :- import_module cord.
 :- import_module counter.
@@ -344,10 +344,10 @@ replace_node(FindId, NewTree, Tree0, Tree) :-
 
 %-----------------------------------------------------------------------------%
 
-setup_pager(Config, Cols, Mode, Folding, Messages, Info, !IO) :-
+setup_pager(Config, Cols, Mode, Folding, OnlyMatched, Messages, Info, !IO) :-
     counter.init(0, Counter0),
     allocate_node_id(NodeId, Counter0, Counter1),
-    list.map_foldl2(make_message_tree(Config, Cols, Mode, Folding),
+    list.map_foldl2(make_message_tree(Config, Cols, Mode, Folding, OnlyMatched),
         Messages, Trees, Counter1, Counter, !IO),
     Tree = node(NodeId, Trees, no),
     Flattened = flatten(Tree, no),
@@ -356,23 +356,31 @@ setup_pager(Config, Cols, Mode, Folding, Messages, Info, !IO) :-
     Info = pager_info(Config, Tree, Counter, Scrollable, Extents, no).
 
 :- pred make_message_tree(prog_config::in, int::in, setup_mode::in, folding::in,
-    message::in, tree::out, counter::in, counter::out,
+    bool::in, message::in, tree::out, counter::in, counter::out,
     io::di, io::uo) is det.
 
-make_message_tree(Config, Cols, Mode, Folding, Message, Tree, !Counter, !IO) :-
+make_message_tree(Config, Cols, Mode, Folding, OnlyMatched, Message, Tree,
+        !Counter, !IO) :-
     allocate_node_id(NodeId, !Counter),
     (
         Message = message(_MessageId, _Timestamp, _Headers, _Tags, _Body,
-            Replies, _IsMatch),
-        make_message_self_trees(Config, Cols, Folding, Message, NodeId,
-            SelfTrees, !Counter, !IO)
+            Replies, IsMatch),
+        (
+            OnlyMatched = yes,
+            IsMatch = no
+        ->
+            SelfTrees = []
+        ;
+            make_message_self_trees(Config, Cols, Folding, OnlyMatched,
+                Message, NodeId, SelfTrees, !Counter, !IO)
+        )
     ;
         Message = excluded_message(_, _, _, _, Replies),
         SelfTrees = []
     ),
     (
         Mode = include_replies,
-        list.map_foldl2(make_message_tree(Config, Cols, Mode, Folding),
+        list.map_foldl2(make_message_tree(Config, Cols, Mode, Folding, OnlyMatched),
             Replies, ReplyTrees, !Counter, !IO)
     ;
         Mode = toplevel_only,
@@ -381,11 +389,11 @@ make_message_tree(Config, Cols, Mode, Folding, Message, Tree, !Counter, !IO) :-
     Tree = node(NodeId, SelfTrees ++ ReplyTrees, no).
 
 :- pred make_message_self_trees(prog_config::in, int::in, folding::in,
-    message::in(message), node_id::in, list(tree)::out,
+    bool::in, message::in(message), node_id::in, list(tree)::out,
     counter::in, counter::out, io::di, io::uo) is det.
 
-make_message_self_trees(Config, Cols, Folding, Message, NodeId, Trees,
-        !Counter, !IO) :-
+make_message_self_trees(Config, Cols, Folding, OnlyMatched, Message,
+        NodeId, Trees, !Counter, !IO) :-
     Message = message(_MessageId, _Timestamp, Headers, _Tags, Body, _Replies,
         _IsMatch),
     some [!RevLines] (
